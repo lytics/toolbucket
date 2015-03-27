@@ -61,7 +61,7 @@ import line: `import "github.com/lytics/toolbucket/orderedtask"`
 	}
 
 	const PoolSize = 16
-
+func ProcessMessages() {
 	//Create the pool with PoolSize workers
 	pool := orderedtask.NewPool(PoolSize, func(workerlocal map[string]interface{}, t *orderedtask.Task) {
 		// workerlocal is used for storing go routine local state that isn't shared between workers.
@@ -90,32 +90,27 @@ import line: `import "github.com/lytics/toolbucket/orderedtask"`
 	})
 	defer pool.Close() //Closing the pool shuts down all the workers.
 
-	wg := &sync.WaitGroup{}
+	//here we consume messages from kafka, insert them into the pool to be unmarshalled
+	//and then consume the messages from the pool as structs
 
-	//Produce messages from kafka, into the pool to be unmarshalled
-	// and then Consume messages from the pool as structs
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	kafkaconsumer := createKafkaConsumer() //for example this could be a https://github.com/Shopify/sarama consumer, reading messages from kafka8.
 
-		kafkaconsumer := createKafkaConsumer() //for example this could be a https://github.com/Shopify/sarama consumer, reading messages from kafka8.
-
-		for {
-			select {
-			case event := <-kafkaconsumer.Events():
-				if event.Err != nil {
-					log.Printf("error: consumer: %v", event.Err)
-					continue
-				}
-				//Take the events in from kafka and pass them off to the pool to be unmarshal'ed
-				pool.Enqueue(&orderedtask.Task{Index: event.Offset, Input: &Msg{event.Offset, event.Message}})
-			case res := <-pool.Results():
-				vis := t.Output.(*Visit)
-				fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
-				//process the unmarshalled Visit struct
+	for {
+		select {
+		case event := <-kafkaconsumer.Events():
+			if event.Err != nil {
+				log.Printf("error: consumer: %v", event.Err)
+				continue
 			}
+			//Take the events in from kafka and pass them off to the pool to be unmarshal'ed
+			pool.Enqueue(&orderedtask.Task{Index: event.Offset, Input: &Msg{event.Offset, event.Message}})
+		case res := <-pool.Results():
+			vis := t.Output.(*Visit)
+			fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
+			//process the unmarshalled Visit struct
 		}
-	}()
+	}
+}
 ```
 
 
