@@ -1,4 +1,4 @@
-#### orderedtask.Pool
+#### orderedtask.Pool 
 
 The primary use-case for this package would be to insert tasks in order, have them
 processed in parallel and have the results consumed in the original order.  
@@ -45,8 +45,8 @@ will be the message bytes.   The Task's result will be the unmarshalled struct. 
 processor func(),  write code to do the JSON unmarshalling into a struct.
 
 
-
 ###### Example Code:
+import line: `import "github.com/lytics/toolbucket/orderedtask"`
 
 
 ```go
