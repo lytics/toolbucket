@@ -1,4 +1,4 @@
-package orderedtaskpool
+package orderedtask
 
 import "container/heap"
 

@@ -1,7 +1,7 @@
 package orderedtaskpool
 
 /*
-OrderedTaskPool
+orderedtask.Pool
 
 The primary use-case for this package would be to insert tassks in order, have them
 processed in parallel and have the results consumed in the original order.

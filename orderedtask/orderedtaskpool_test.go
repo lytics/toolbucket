@@ -1,4 +1,4 @@
-package orderedtaskpool
+package orderedtask
 
 import (
 	"bytes"
@@ -23,7 +23,7 @@ func TestSimpleExample(test *testing.T) {
 	//  Note: if you lower the pool size, the total runtime gets longer due to the
 	//       lack of parallelization.
 	//
-	pool := NewOrderedTaskPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
+	pool := NewPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
 		var buf bytes.Buffer
 		if b, ok := workerlocal["buf"]; !ok {
 			//worker local is not shared between go routines, so it's a good place to place a store a reusable items like buffers
@@ -81,7 +81,7 @@ func TestSlowConsumers(test *testing.T) {
 	const MsgCnt = 1000
 	const PoolSize = 2
 
-	pool := NewOrderedTaskPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
+	pool := NewPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
 		msg := t.Input.(*Msg)
 		amt := time.Duration(rand.Intn(10))
 		time.Sleep(time.Millisecond * amt)
@@ -127,7 +127,7 @@ func TestSlowProducers(test *testing.T) {
 	const MsgCnt = 1000
 	const PoolSize = 3
 
-	pool := NewOrderedTaskPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
+	pool := NewPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
 		msg := t.Input.(*Msg)
 		amt := time.Duration(rand.Intn(10))
 		time.Sleep(time.Millisecond * amt)
@@ -173,7 +173,7 @@ func TestFastWorkers(test *testing.T) {
 	const MsgCnt = 50000
 	const PoolSize = 2
 
-	pool := NewOrderedTaskPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
+	pool := NewPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
 		msg := t.Input.(*Msg)
 		t.Output = msg
 	})

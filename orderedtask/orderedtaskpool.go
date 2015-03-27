@@ -1,9 +1,8 @@
-package orderedtaskpool
+package orderedtask
 
-import (
-	"container/heap"
-	"sync"
-)
+// import github.com/lytics/toolbucket/orderedtask
+
+import "sync"
 
 type Task struct {
 	Index  uint64
@@ -11,70 +10,14 @@ type Task struct {
 	Output interface{}
 }
 
-//
-// Finished Task Pool
-//
-type TaskHeap struct {
-	tasks  []*Task
-	sortBy func(*Task, *Task) bool
-}
-
-var AscendingTaskOrder func(*Task, *Task) bool = func(p1, p2 *Task) bool {
-	return (p1.Index < p2.Index)
-}
-var DecendingTaskOrder func(*Task, *Task) bool = func(p1, p2 *Task) bool {
-	return !(p1.Index < p2.Index)
-}
-
-func (th *TaskHeap) Len() int           { return len(th.tasks) }
-func (th *TaskHeap) Less(i, j int) bool { return th.sortBy(th.tasks[i], th.tasks[j]) }
-func (th *TaskHeap) Swap(i, j int)      { th.tasks[i], th.tasks[j] = th.tasks[j], th.tasks[i] }
-
-func (th *TaskHeap) Push(x interface{}) {
-	th.tasks = append(th.tasks, x.(*Task))
-}
-
-func (th *TaskHeap) Pop() interface{} {
-	old := th.tasks
-	tail := old[len(old)-1]
-	th.tasks = old[0 : len(old)-1]
-	return tail
-}
-
-func (th *TaskHeap) Next() bool {
-	return th.Len() > 0
-}
-
-func (th *TaskHeap) Peek() (*Task, bool) {
-	if len(th.tasks) == 0 {
-		return nil, false
-	}
-	return th.tasks[0], true
-}
-
-func (th *TaskHeap) Dequeue() *Task {
-	return heap.Pop(th).(*Task)
-}
-
-func (th *TaskHeap) Enqueue(t *Task) {
-	heap.Push(th, t)
-}
-
-func NewTaskHeap() *TaskHeap {
-	taskarray := []*Task{}
-	th := &TaskHeap{taskarray, AscendingTaskOrder}
-	heap.Init(th)
-	return th
-}
-
 /*
 
-OrderedTaskPool is the main struct for everything in this package.  Its job is to
+Pool is the main struct for everything in this package.  Its job is to
 coordinate tasks and workers and to ensure emitted events are in index order with
 regards to the the task.Index of all enqueued tasks.
 
 */
-type OrderedTaskPool struct {
+type Pool struct {
 	//data flow
 	finishedtaskheap *TaskHeap
 	lowwatermark     *LowWatermark
@@ -88,11 +31,11 @@ type OrderedTaskPool struct {
 	lock      *sync.Mutex
 }
 
-func (ms *OrderedTaskPool) Results() <-chan *Task {
+func (ms *Pool) Results() <-chan *Task {
 	return ms.out
 }
 
-func (ms *OrderedTaskPool) Enqueue(m *Task) {
+func (ms *Pool) Enqueue(m *Task) {
 	ms.lock.Lock()
 	ms.lowwatermark.Enqueue(m.Index)
 	ms.lock.Unlock()
@@ -100,7 +43,7 @@ func (ms *OrderedTaskPool) Enqueue(m *Task) {
 	ms.in <- m
 }
 
-func (ms *OrderedTaskPool) enqueueAndDrain(t *Task) {
+func (ms *Pool) enqueueAndDrain(t *Task) {
 	//emit tasks if the lowest index is ready.
 	ms.lock.Lock()
 	defer ms.lock.Unlock()
@@ -124,17 +67,17 @@ func (ms *OrderedTaskPool) enqueueAndDrain(t *Task) {
 	}
 }
 
-func (ms *OrderedTaskPool) Close() {
+func (ms *Pool) Close() {
 	ms.closeonce.Do(func() {
 		close(ms.abort)
 	})
 }
 
-func NewOrderedTaskPool(poolsize int, processor func(map[string]interface{}, *Task)) *OrderedTaskPool {
+func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool {
 	abort := make(chan bool)
 	in := make(chan *Task, 5)
 	out := make(chan *Task, 5)
-	ms := &OrderedTaskPool{
+	ms := &Pool{
 		finishedtaskheap: NewTaskHeap(),
 		lowwatermark:     NewLowWatermark(),
 		abort:            abort,
