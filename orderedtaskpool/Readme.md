@@ -21,8 +21,6 @@ processor func(),  write code to do the JSON unmarshalling
 ###### diagram 
 
 ```
-
-	        |                            |
 	        |                            |
 	        |     ---->  worker() --\    |
 	        |    /                   \   |
@@ -30,5 +28,80 @@ Enqueue()--in----------->  worker() ------out----> Results()
 	        |    \                   /   |
 	        |     ----> worker() ---/    |
 	        |                            |
+```
+
+
+###### code example:
+
+structs
 
 ```
+	type Visitor struct {
+		Name      string
+		ClickLink string
+		VisitTime int64
+	}
+	type Msg struct {
+		Offset uint64
+		Body   []bytes
+	}
+
+```
+Example using of the pull
+
+```
+	const PoolSize = 16
+
+	//Create the pool with PoolSize workers
+	pool := NewOrderedTaskPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
+		var buf bytes.Buffer
+		if b, ok := workerlocal["buf"]; !ok {
+			//worker local is not shared between go routines, so it's a good place to place a store a reusable items like buffers
+			buf = bytes.Buffer{}
+			workerlocal["buf"] = buf
+		} else {
+			buf = b.(bytes.Buffer)
+		}
+		buf.Reset()
+
+
+		var visit Visitor
+		msg := t.Input.(*Msg)
+		err := json.Unmarshal(msg.Body, &vistor)
+		if err != nil {
+			fmt.Println("error:", err)
+		}
+
+		t.Output = visit
+	})
+	defer pool.Close()
+
+	wg := &sync.WaitGroup{}
+
+	//Produce messages from kafka, into the pool to be unmarshalled
+	// and then Consume messages from the pool as structs
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		
+		for {
+			select {
+			case event := kafkaconsumer..Events():
+				if event.Err != nil {
+					log.Printf("error: consumer: %v", event.Err)
+					continue
+				}
+				pool.Enqueue(&Task{Index: event.Offset, Input: &Msg{event.Offset, event.Message}})
+			case res := pool.Results():
+				msg := t.Output.(*Msg)
+				fmt.Printf("msg off:%v text:%v \n", msg.offset, msg.text)
+			}
+		}
+	}()
+```
+
+
+
+
+
+
