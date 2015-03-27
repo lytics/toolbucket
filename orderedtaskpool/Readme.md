@@ -35,7 +35,7 @@ Enqueue()--in----------->  worker() ------out----> Results()
 
 structs
 
-```
+```go
 	type Visitor struct {
 		Name      string
 		ClickLink string
@@ -49,7 +49,7 @@ structs
 ```
 Example using of the pull
 
-```
+```go
 	const PoolSize = 16
 
 	//Create the pool with PoolSize workers
