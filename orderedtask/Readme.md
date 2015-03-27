@@ -49,7 +49,7 @@ processor func(),  write code to do the JSON unmarshalling into a struct.
 ###### Example Code:
 
 
-```
+```go
 	type Visitor struct {
 		Name      string
 		ClickLink string
