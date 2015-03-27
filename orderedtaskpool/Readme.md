@@ -54,16 +54,19 @@ Example using of the pull
 
 	//Create the pool with PoolSize workers
 	pool := NewOrderedTaskPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
-		var buf bytes.Buffer
-		if b, ok := workerlocal["buf"]; !ok {
-			//worker local is not shared between go routines, so it's a good place to place a store a reusable items like buffers
-			buf = bytes.Buffer{}
-			workerlocal["buf"] = buf
-		} else {
-			buf = b.(bytes.Buffer)
-		}
-		buf.Reset()
-
+		//For some serialization frameworks you get better performance if you can reuse buffers in a thread-safe manor.
+		// workerlocal is used for storing state for each go routine worker.
+		/*
+			var buf bytes.Buffer
+			if b, ok := workerlocal["buf"]; !ok {
+				//worker local is not shared between go routines, so it's a good place to place a store a reusable items like buffers
+				buf = bytes.Buffer{}
+				workerlocal["buf"] = buf
+			} else {
+				buf = b.(bytes.Buffer)
+			}
+			buf.Reset()
+		*/
 
 		var visit Visitor
 		msg := t.Input.(*Msg)
@@ -83,18 +86,22 @@ Example using of the pull
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		
+
+		kafkaconsumer := createKafkaConsumer() //for example this could be a https://github.com/Shopify/sarama consumer, reading messages from kafka8.
+
 		for {
 			select {
-			case event := kafkaconsumer..Events():
+			case event := <-kafkaconsumer.Events():
 				if event.Err != nil {
 					log.Printf("error: consumer: %v", event.Err)
 					continue
 				}
+				//Take the events in from kafka and pass them off to the pool to be unmarshal'ed
 				pool.Enqueue(&Task{Index: event.Offset, Input: &Msg{event.Offset, event.Message}})
-			case res := pool.Results():
-				msg := t.Output.(*Msg)
-				fmt.Printf("msg off:%v text:%v \n", msg.offset, msg.text)
+			case res := <-pool.Results():
+				vis := t.Output.(*Visitor)
+				fmt.Printf("visitor: off:%v text:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
+				//process the unmarshalled Visitor struct
 			}
 		}
 	}()
