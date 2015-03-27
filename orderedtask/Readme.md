@@ -50,7 +50,7 @@ processor func(),  write code to do the JSON unmarshalling into a struct.
 
 
 ```go
-	type Visitor struct {
+	type Visit struct {
 		Name      string
 		ClickLink string
 		VisitTime int64
@@ -66,15 +66,13 @@ processor func(),  write code to do the JSON unmarshalling into a struct.
 
 	//Create the pool with PoolSize workers
 	pool := orderedtask.NewPool(PoolSize, func(workerlocal map[string]interface{}, t *orderedtask.Task) {
-		//For some serialization frameworks you get better performance if you can reuse buffers in a thread-safe manor.
-		// workerlocal is used for storing state for each go routine worker.
+		// workerlocal is used for storing go routine local state that isn't shared between workers.
+		//   i.e. if you need to reuse a buffer between calls to the function. 
 		/*
 			var buf bytes.Buffer
+			// Checking if "buf" is created.
+			// we only want to create the buffer once on the first call to this worker!
 			if b, ok := workerlocal["buf"]; !ok { 
-				// This only creates the buffer once, on the first call to process!
-
-				//worker local is not shared between go routines, so it's a good place to 
-				// place a store a reusable items like buffers
 				buf = bytes.Buffer{}
 				workerlocal["buf"] = buf
 			} else {
@@ -83,16 +81,16 @@ processor func(),  write code to do the JSON unmarshalling into a struct.
 			buf.Reset()
 		*/
 
-		var visit Visitor
-		msg := t.Input.(*Msg)
-		err := json.Unmarshal(msg.Body, &vistor)
+		var v Visit
+		msg := t.Input.(*Msg) //Task.Input is anything you want processed in the pull.
+		err := json.Unmarshal(msg.Body, &v)
 		if err != nil {
 			fmt.Println("error:", err)
 		}
 
-		t.Output = visit
+		t.Output = v  //Task.Output is were you write the results from the task.
 	})
-	defer pool.Close()
+	defer pool.Close() //Closing the pool shuts down all the workers.
 
 	wg := &sync.WaitGroup{}
 
@@ -114,9 +112,9 @@ processor func(),  write code to do the JSON unmarshalling into a struct.
 				//Take the events in from kafka and pass them off to the pool to be unmarshal'ed
 				pool.Enqueue(&orderedtask.Task{Index: event.Offset, Input: &Msg{event.Offset, event.Message}})
 			case res := <-pool.Results():
-				vis := t.Output.(*Visitor)
-				fmt.Printf("visitor: off:%v text:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
-				//process the unmarshalled Visitor struct
+				vis := t.Output.(*Visit)
+				fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
+				//process the unmarshalled Visit struct
 			}
 		}
 	}()
