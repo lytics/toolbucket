@@ -1,25 +1,24 @@
-package orderedtaskpool
+package orderedtask
 
 /*
 orderedtask.Pool
 
-The primary use-case for this package would be to insert tassks in order, have them
+The primary use-case for this package would be to insert tasks in order, have them
 processed in parallel and have the results consumed in the original order.
 
-Example:
-	You need to read billions of JSON messages out of a Kafka partition, unmarshall the JSON
-	into a struct and maintain the order of messages.
+If a tasks is going to take 10ms and you have 10,000 tasks to perform, then the expected runtime
+to perform those tasks one at a time is: `10000 * 10ms == 100 seconds`.  But if you can do them
+parallel with 12 workers, the expect runtime becomes `(10000 * 10ms) / 12 == 8.3 seconds`.
 
-	JSON unmarshalling is very slow and could add days to your processing time, so you want to
-	unmarshall the data in parallel.  But after you unmarshall the messages, you have to
-	put them back into the original order they were read from kafka.
+Notes:
 
-	Solution use OrderedTaskPool, the Task's index will be the kafka-offset and the Task's input
-	will be the message bytes.   The Task's result will be the unmarshalled struct.  For you
-	processor func(),  write code to do the JSON unmarshalling
+All Tasks are emitted in ascending index order.   i.e. 1, 2, 3,...,N
 
-Events are emitted ascending index order.   i.e. 1, 2, 3,...,N
-
+Internally were using two MinHeaps, one for the lowest task inserted into the pool and
+one for the lowest index of finished tasks.  While the finish tasks index matches the
+lowest inserted task, we'll emit the results from the finished tasks.  If the lowest
+index for finished tasks is not equal to the lowest inserted task's index, then we wait for
+the workers who are processing the lowest indexes to finish before draining.
 
 
 	        |                            |
