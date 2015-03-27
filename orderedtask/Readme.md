@@ -60,8 +60,6 @@ import line: `import "github.com/lytics/toolbucket/orderedtask"`
 		Body   []bytes
 	}
 
-	// import github.com/lytics/toolbucket/orderedtask
-
 	const PoolSize = 16
 
 	//Create the pool with PoolSize workers
