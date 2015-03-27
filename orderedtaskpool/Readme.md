@@ -8,7 +8,7 @@ Events are emitted ascending index order.   i.e. 1, 2, 3,...,N
 #### An example usecase:
 
 You need to read billions of JSON messages out of a Kafka partition, unmarshall the JSON
-into a struct and maintain the order of messages.
+into a struct in parallel and maintain the order of messages after they're unmarshalled.
 
 JSON unmarshalling is very slow and could add days to your processing time, so you want to
 unmarshall the data in parallel.  But after you unmarshall the messages, you have to
