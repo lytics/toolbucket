@@ -15,8 +15,8 @@ unmarshall the data in parallel.  But after you unmarshall the messages, you hav
 put them back into the original order they were read from kafka.
 
 Solution use OrderedTaskPool, the Task's index will be the kafka-offset and the Task's input
-will be the message bytes.   The Task's result will be the unmarshalled struct.  For you
-processor func(),  write code to do the JSON unmarshalling
+will be the message bytes.   The Task's result will be the unmarshalled struct.  For your
+processor func() write code to do the JSON unmarshalling.
 
 #### diagram 
 
