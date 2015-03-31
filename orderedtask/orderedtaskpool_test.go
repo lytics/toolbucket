@@ -108,13 +108,17 @@ func TestSlowConsumers(test *testing.T) {
 		i := 0
 		expectedoffset := uint64(0)
 
-		//ticketbox := pool.GetTicketBox()
+		ticketbox := pool.GetTicketBox()
 
 		for {
 			select {
-			case pool.Enqueue() <- <-msgchan:
+			case <-ticketbox.Tickets():
+				t, ok := <-msgchan
+				if ok {
+					pool.Enqueue() <- t
+				}
 			case t := <-pool.Results():
-				//ticketbox.ReturnTicket()
+				ticketbox.ReturnTicket()
 
 				msg := t.Output.(*Msg)
 				i++
