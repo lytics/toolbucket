@@ -97,7 +97,6 @@ func TestSlowConsumers(test *testing.T) {
 		defer wg.Done()
 		for i := 0; i < MsgCnt; i++ {
 			m := &Msg{fmt.Sprintf("{'foo':'%d'}", i), uint64(i)}
-			//pool.Enqueue() <- &Task{Index: m.offset, Input: m}
 			msgchan <- &Task{Index: m.offset, Input: m}
 		}
 		close(msgchan)
@@ -109,17 +108,13 @@ func TestSlowConsumers(test *testing.T) {
 		i := 0
 		expectedoffset := uint64(0)
 
-		ticketbox := pool.GetTicketBox()
+		//ticketbox := pool.GetTicketBox()
 
 		for {
 			select {
-			case <-ticketbox.Tickets():
-				t, ok := <-msgchan
-				if ok {
-					pool.Enqueue() <- t
-				}
+			case pool.Enqueue() <- <-msgchan:
 			case t := <-pool.Results():
-				ticketbox.ReturnTicket()
+				//ticketbox.ReturnTicket()
 
 				msg := t.Output.(*Msg)
 				i++
