@@ -24,6 +24,7 @@ type Pool struct {
 	//data flow
 	finishedtaskheap *TaskHeap
 	lowwatermark     *LowWatermark
+	semaphore        *TicketDispenser
 
 	//Sync Code
 	abort chan bool
@@ -81,9 +82,12 @@ func (ms *Pool) Close() {
 	})
 }
 
-func (ms *Pool) TicketDispenser() *TicketDispenser {
-	poolstoreage := cap(ms.in) - 1
-	return NewTicketDispenser(poolstoreage)
+func (ms *Pool) AquireTicket() <-chan bool {
+	return ms.semaphore.Tickets()
+}
+
+func (ms *Pool) ReleaseTicket() {
+	ms.semaphore.ReleaseTicket()
 }
 
 func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool {
@@ -99,6 +103,10 @@ func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool 
 		out:              out,
 		closeonce:        &sync.Once{},
 		lock:             &sync.Mutex{},
+		//counting semaphore to protect deadlocking when the pool is used in an RPC manner
+		//  i.e. read/write from the same go func.
+		//  See: TestPoolRPC
+		semaphore: NewTicketDispenser(cap(in) - 1),
 	}
 
 	//start up worker pool

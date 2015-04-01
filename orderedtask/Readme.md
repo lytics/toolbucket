@@ -45,9 +45,13 @@ will be the message bytes.   The Task's result will be the unmarshalled struct. 
 processor func(),  write code to do the JSON unmarshalling into a struct.
 
 
-###### Example Code:
+###### Code Examples:
 import line: `import "github.com/lytics/toolbucket/orderedtask"`
 
+For fulling working examples of both styles below, have a look at `orderedtaskpool_test.go`.  I personally prefer 
+the style from the first example, but performance testing of both showed the same results. 
+
+### Producer / Consumer example 
 
 ```go
 	type Visit struct {
@@ -61,63 +65,147 @@ import line: `import "github.com/lytics/toolbucket/orderedtask"`
 	}
 
 	const PoolSize = 16
-func ProcessMessages() {
-	//Create the pool with PoolSize workers
-	pool := orderedtask.NewPool(PoolSize, func(workerlocal map[string]interface{}, t *orderedtask.Task) {
-		// workerlocal is used for storing go routine local state that isn't shared between workers.
-		//   i.e. if you need to reuse a buffer between calls to the function. 
-		/*
-			var buf bytes.Buffer
-			// Checking if "buf" is created.
-			// we only want to create the buffer once on the first call to this worker!
-			if b, ok := workerlocal["buf"]; !ok { 
-				buf = bytes.Buffer{}
-				workerlocal["buf"] = buf
-			} else {
-				buf = b.(bytes.Buffer)
+
+	func ProcessMessages() {
+		//Create the pool with PoolSize workers
+		pool := orderedtask.NewPool(PoolSize, func(workerlocal map[string]interface{}, t *orderedtask.Task) {
+			// workerlocal is used for storing go routine local state that isn't shared between workers.
+			//   i.e. if you need to reuse a buffer between calls to the function.
+			/*
+				var buf bytes.Buffer
+				// Checking if "buf" is created.
+				// we only want to create the buffer once on the first call to this worker!
+				if b, ok := workerlocal["buf"]; !ok {
+					buf = bytes.Buffer{}
+					workerlocal["buf"] = buf
+				} else {
+					buf = b.(bytes.Buffer)
+				}
+				buf.Reset()
+			*/
+
+			var v Visit
+			msg := t.Input.(*Msg) //Task.Input is anything you want processed in the pull.
+			err := json.Unmarshal(msg.Body, &v)
+			if err != nil {
+				fmt.Println("error:", err)
 			}
-			buf.Reset()
-		*/
 
-		var v Visit
-		msg := t.Input.(*Msg) //Task.Input is anything you want processed in the pull.
-		err := json.Unmarshal(msg.Body, &v)
-		if err != nil {
-			fmt.Println("error:", err)
-		}
+			t.Output = v //Task.Output is were you write the results from the task.
+		})
+		defer pool.Close() //Closing the pool shuts down all the workers.
 
-		t.Output = v  //Task.Output is were you write the results from the task.
-	})
-	defer pool.Close() //Closing the pool shuts down all the workers.
+		//here we consume messages from kafka, insert them into the pool to be unmarshalled
+		//and then consume the messages from the pool as structs
 
-	//here we consume messages from kafka, insert them into the pool to be unmarshalled
-	//and then consume the messages from the pool as structs
-
-	kafkaconsumer := createKafkaConsumer() //for example this could be a https://github.com/Shopify/sarama consumer, reading messages from kafka8.
-
-	//When you read and write into the pool from the same go routine, you run the risk of a deadlock 
-	//  by over producing.  Locking up when you block trying to enqueue.  To prevent this we provided a  
-	//  convenient semaphore, that protects overloading the system.
-	ticketbox := pool.TicketDispenser()
-
-	for {
-		select {
-		case <-ticketbox.Tickets():
-			event := <-kafkaconsumer.Events():
-			if event.Err != nil {
-				log.Printf("error: consumer: %v", event.Err)
-				continue
+		go func() {
+			kafkaconsumer := createKafkaConsumer() //for example this could be a https://github.com/Shopify/sarama consumer, reading messages from kafka8.
+			defer kafkaconsumer.Close()
+			for {
+				select {
+				case event := <-kafkaconsumer.Events():
+					if event.Err != nil {
+						log.Printf("error: consumer: %v", event.Err)
+						continue
+					}
+					//Take the events in from kafka and pass them off to the pool to be unmarshal'ed
+					pool.Enqueue(&orderedtask.Task{Index: event.Offset, Input: &Msg{event.Offset, event.Message}})
+				}
 			}
-			//Take the events in from kafka and pass them off to the pool to be unmarshal'ed
-			pool.Enqueue(&orderedtask.Task{Index: event.Offset, Input: &Msg{event.Offset, event.Message}})
-		case res := <-pool.Results():
-			ticketbox.ReleaseTicket()
-			vis := t.Output.(*Visit)
-			fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
-			//process the unmarshalled Visit struct
+		}()
+
+		for {
+			select {
+			case res := <-pool.Results():
+				pool.ReleaseTicket()
+
+				vis := t.Output.(*Visit)
+				fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
+				//process the unmarshalled Visit struct
+			}
 		}
 	}
-}
+```
+
+
+### RPC style pool use
+I can't think of a better name for it, but its the case were you have a single go routine read and write from the same pool.  Versus 
+have one go routine enqueue and one consume the results.  This style of processing is a bit tricker because it runs the risk of 
+deadlocking in the select.  To avoid this, the pool provides a resource semaphore, which is preloaded with tickets equal to the pool size. 
+
+```go
+	type Visit struct {
+		Name      string
+		ClickLink string
+		VisitTime int64
+	}
+	type Msg struct {
+		Offset uint64
+		Body   []bytes
+	}
+
+	const PoolSize = 16
+
+	func ProcessMessages() {
+		//Create the pool with PoolSize workers
+		pool := orderedtask.NewPool(PoolSize, func(workerlocal map[string]interface{}, t *orderedtask.Task) {
+			// workerlocal is used for storing go routine local state that isn't shared between workers.
+			//   i.e. if you need to reuse a buffer between calls to the function. 
+			/*
+				var buf bytes.Buffer
+				// Checking if "buf" is created.
+				// we only want to create the buffer once on the first call to this worker!
+				if b, ok := workerlocal["buf"]; !ok { 
+					buf = bytes.Buffer{}
+					workerlocal["buf"] = buf
+				} else {
+					buf = b.(bytes.Buffer)
+				}
+				buf.Reset()
+			*/
+
+			var v Visit
+			msg := t.Input.(*Msg) //Task.Input is anything you want processed in the pull.
+			err := json.Unmarshal(msg.Body, &v)
+			if err != nil {
+				fmt.Println("error:", err)
+			}
+
+			t.Output = v  //Task.Output is were you write the results from the task.
+		})
+		defer pool.Close() //Closing the pool shuts down all the workers.
+
+		//here we consume messages from kafka, insert them into the pool to be unmarshalled
+		//and then consume the messages from the pool as structs
+
+		kafkaconsumer := createKafkaConsumer() //for example this could be a https://github.com/Shopify/sarama consumer, reading messages from kafka8.
+
+		for {
+			select {
+			//When you read and write into the pool from the same go routine, you run the risk of a deadlock 
+			//  by over producing and deadlocking on a channel blocking.  To prevent this pool provides a  
+			//  semaphore for your convenient.  This should be non-blocking unless the producers are after than 
+			//  your consumers. 
+			//
+			//  pool.AquireTicket() blocks if the enqueue channel becomes full
+			//  pool.ReleaseTicket() signals enqueues that a resource has been returned too the pull.
+			case <-pool.AquireTicket():
+				event := <-kafkaconsumer.Events():
+				if event.Err != nil {
+					log.Printf("error: consumer: %v", event.Err)
+					continue
+				}
+				//Take the events in from kafka and pass them off to the pool to be unmarshal'ed
+				pool.Enqueue(&orderedtask.Task{Index: event.Offset, Input: &Msg{event.Offset, event.Message}})
+			case res := <-pool.Results():
+				pool.ReleaseTicket()
+
+				vis := t.Output.(*Visit)
+				fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
+				//process the unmarshalled Visit struct
+			}
+		}
+	}
 ```
 
 

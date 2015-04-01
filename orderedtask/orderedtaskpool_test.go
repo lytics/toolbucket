@@ -17,7 +17,7 @@ type Msg struct {
 
 func TestStreamingMsgsThroughThePool(test *testing.T) {
 	runtime.GOMAXPROCS(2)
-	const MsgCnt = 5000
+	const MsgCnt = 9333
 	const PoolSize = 12
 
 	//Create the pool with PoolSize workers
@@ -36,7 +36,7 @@ func TestStreamingMsgsThroughThePool(test *testing.T) {
 		buf.Reset()
 
 		msg := t.Input.(*Msg)
-		amt := time.Duration(rand.Intn(5))
+		amt := time.Duration(5)
 		time.Sleep(time.Millisecond * amt) // long running operation
 		t.Output = msg
 	})
@@ -75,7 +75,7 @@ func TestStreamingMsgsThroughThePool(test *testing.T) {
 	wg.Wait()
 }
 
-func TestCallerUsesPoolForRPC(test *testing.T) {
+func TestPoolRPC(test *testing.T) {
 	runtime.GOMAXPROCS(2)
 	const MsgCnt = 9333
 	const PoolSize = 12
@@ -84,7 +84,7 @@ func TestCallerUsesPoolForRPC(test *testing.T) {
 
 	pool := NewPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
 		msg := t.Input.(*Msg)
-		amt := time.Duration(rand.Intn(9))
+		amt := time.Duration(5)
 		time.Sleep(time.Millisecond * amt)
 		t.Output = msg
 	})
@@ -106,17 +106,15 @@ func TestCallerUsesPoolForRPC(test *testing.T) {
 		i := 0
 		expectedoffset := uint64(0)
 
-		ticketbox := pool.TicketDispenser()
-
 		for {
 			select {
-			case <-ticketbox.Tickets():
+			case <-pool.AquireTicket():
 				t, ok := <-msgchan
 				if ok {
 					pool.Enqueue(t)
 				}
 			case t := <-pool.Results():
-				ticketbox.ReleaseTicket()
+				pool.ReleaseTicket()
 
 				msg := t.Output.(*Msg)
 				i++
@@ -164,17 +162,15 @@ func TestSlowConsumers(test *testing.T) {
 		i := 0
 		expectedoffset := uint64(0)
 
-		ticketbox := pool.TicketDispenser()
-
 		for {
 			select {
-			case <-ticketbox.Tickets():
+			case <-pool.AquireTicket():
 				t, ok := <-msgchan
 				if ok {
 					pool.Enqueue(t)
 				}
 			case t := <-pool.Results():
-				ticketbox.ReleaseTicket()
+				pool.ReleaseTicket()
 
 				msg := t.Output.(*Msg)
 				i++
@@ -224,11 +220,9 @@ func TestSlowProducers(test *testing.T) {
 		i := 0
 		expectedoffset := uint64(0)
 
-		ticketbox := pool.TicketDispenser()
-
 		for {
 			select {
-			case <-ticketbox.Tickets():
+			case <-pool.AquireTicket():
 				t, ok := <-msgchan
 				if ok {
 					pool.Enqueue(t)
@@ -236,7 +230,8 @@ func TestSlowProducers(test *testing.T) {
 				amt := time.Duration(rand.Intn(15))
 				time.Sleep(time.Millisecond * amt)
 			case t := <-pool.Results():
-				ticketbox.ReleaseTicket()
+				pool.ReleaseTicket()
+
 				msg := t.Output.(*Msg)
 
 				i++
