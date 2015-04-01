@@ -95,9 +95,15 @@ func ProcessMessages() {
 
 	kafkaconsumer := createKafkaConsumer() //for example this could be a https://github.com/Shopify/sarama consumer, reading messages from kafka8.
 
+	//When you read and write into the pool from the same go routine, you run the risk of a deadlock 
+	//  by over producing.  Locking up when you block trying to enqueue.  To prevent this we provided a  
+	//  convenient semaphore, that protects overloading the system.
+	ticketbox := pool.TicketDispenser()
+
 	for {
 		select {
-		case event := <-kafkaconsumer.Events():
+		case <-ticketbox.Tickets():
+			event := <-kafkaconsumer.Events():
 			if event.Err != nil {
 				log.Printf("error: consumer: %v", event.Err)
 				continue
@@ -105,6 +111,7 @@ func ProcessMessages() {
 			//Take the events in from kafka and pass them off to the pool to be unmarshal'ed
 			pool.Enqueue(&orderedtask.Task{Index: event.Offset, Input: &Msg{event.Offset, event.Message}})
 		case res := <-pool.Results():
+			ticketbox.ReleaseTicket()
 			vis := t.Output.(*Visit)
 			fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
 			//process the unmarshalled Visit struct

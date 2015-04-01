@@ -1,23 +1,23 @@
 package orderedtask
 
-type TicketBox struct {
+type TicketDispenser struct {
 	freetickets chan bool
 }
 
-func NewTicketBox(size int) *TicketBox {
-	freetickets := make(chan bool, size+1)
+func NewTicketDispenser(size int) *TicketDispenser {
+	freetickets := make(chan bool, size)
 
 	//fillup the ticketbox with tickets
 	for i := 0; i < size; i++ {
 		freetickets <- true
 	}
-	return &TicketBox{freetickets}
+	return &TicketDispenser{freetickets}
 }
 
-func (t *TicketBox) Tickets() <-chan bool {
+func (t *TicketDispenser) Tickets() <-chan bool {
 	return t.freetickets
 }
 
-func (t *TicketBox) ReturnTicket() {
+func (t *TicketDispenser) ReleaseTicket() {
 	t.freetickets <- true
 }

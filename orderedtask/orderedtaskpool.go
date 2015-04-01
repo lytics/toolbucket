@@ -38,8 +38,12 @@ func (ms *Pool) Results() <-chan *Task {
 	return ms.out
 }
 
-func (ms *Pool) Enqueue() chan<- *Task {
-	return ms.in
+func (ms *Pool) Enqueue(m *Task) {
+	ms.lock.Lock()
+	ms.lowwatermark.Enqueue(m.Index)
+	ms.lock.Unlock()
+
+	ms.in <- m
 }
 
 func (ms *Pool) enqueueAndDrain(t *Task) {
@@ -77,9 +81,9 @@ func (ms *Pool) Close() {
 	})
 }
 
-func (ms *Pool) GetTicketBox() *TicketBox {
+func (ms *Pool) TicketDispenser() *TicketDispenser {
 	poolstoreage := cap(ms.in) - 1
-	return NewTicketBox(poolstoreage)
+	return NewTicketDispenser(poolstoreage)
 }
 
 func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool {
@@ -97,16 +101,6 @@ func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool 
 		lock:             &sync.Mutex{},
 	}
 
-	/*go func() { //The bridge updates the lowwatermark heap before handing the task off to the main pool
-		for {
-			select {
-			case t := <-ms.in:
-
-				bridge <- t
-			}
-		}
-	}() */
-
 	//start up worker pool
 	for i := 0; i < poolsize; i++ {
 		go func() {
@@ -114,9 +108,6 @@ func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool 
 			for {
 				select {
 				case t := <-ms.in:
-					ms.lock.Lock()
-					ms.lowwatermark.Enqueue(t.Index)
-					ms.lock.Unlock()
 					processor(workerlocal, t)
 					ms.enqueueAndDrain(t)
 				case <-ms.abort:
