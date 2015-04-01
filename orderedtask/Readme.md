@@ -133,6 +133,8 @@ I can't think of a better name for it, but its the case were you have a single g
 have one go routine enqueue and one consume the results.  This style of processing is a bit tricker because it runs the risk of 
 deadlocking in the select.  To avoid this, the pool provides a resource semaphore, which is preloaded with tickets equal to the pool size. 
 
+A simple example of this deadlock can be found here https://play.golang.org/p/hea1lMu9ya 
+
 ```go
 	type Visit struct {
 		Name      string
