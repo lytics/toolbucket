@@ -48,8 +48,7 @@ processor func(),  write code to do the JSON unmarshalling into a struct.
 ##### Code Examples:
 import line: `import "github.com/lytics/toolbucket/orderedtask"`
 
-Working examples of both examples can be found in `orderedtaskpool_test.go`.  I personally prefer 
-the style from the first example but the performance of both are simlar. 
+Working examples of both examples can be found in `orderedtaskpool_test.go`.  
 
 ###### Producer / Consumer example 
 
