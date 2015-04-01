@@ -184,12 +184,10 @@ An example of this type of deadlock can be found here https://play.golang.org/p/
 		for {
 			select {
 			//When you read and write into the pool from the same go routine, you run the risk of a deadlock 
-			//  by over producing and deadlocking on a channel blocking.  To prevent this pool provides a  
-			//  semaphore for your convenient.  This should be non-blocking unless the producers are after than 
-			//  your consumers. 
-			//
-			//  pool.AquireTicket() blocks if the enqueue channel becomes full
-			//  pool.ReleaseTicket() signals enqueues that a resource has been returned too the pull.
+			//  by over producing and deadlocking on a channel wait.  To prevent this, the pool provides a  
+			//  semaphore for your convenient. 
+			//  pool.AquireTicket() blocks if the enqueue channel is full
+			//  pool.ReleaseTicket() signals enqueue that space in the enqueue channel is available.
 			case <-pool.AquireTicket():
 				event := <-kafkaconsumer.Events():
 				if event.Err != nil {
