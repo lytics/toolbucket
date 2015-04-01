@@ -45,13 +45,13 @@ will be the message bytes.   The Task's result will be the unmarshalled struct. 
 processor func(),  write code to do the JSON unmarshalling into a struct.
 
 
-###### Code Examples:
+##### Code Examples:
 import line: `import "github.com/lytics/toolbucket/orderedtask"`
 
-For fulling working examples of both styles below, have a look at `orderedtaskpool_test.go`.  I personally prefer 
-the style from the first example, but performance testing of both showed the same results. 
+Working examples of both examples can be found in `orderedtaskpool_test.go`.  I personally prefer 
+the style from the first example but the performance of both are simlar. 
 
-### Producer / Consumer example 
+###### Producer / Consumer example 
 
 ```go
 	type Visit struct {
@@ -128,12 +128,11 @@ the style from the first example, but performance testing of both showed the sam
 ```
 
 
-### RPC style pool use
-I can't think of a better name for it, but its the case were you have a single go routine read and write from the same pool.  Versus 
-have one go routine enqueue and one consume the results.  This style of processing is a bit tricker because it runs the risk of 
-deadlocking in the select.  To avoid this, the pool provides a resource semaphore, which is preloaded with tickets equal to the pool size. 
+###### RPC style pool use
+I can't think of a better name for it, but its the case where you have a single go routine read and write from the same pool.  Versus 
+having one go routine enqueue and one consume the results.  This style of processing requires more coordination to avoid hitting a deadlocking in the select if the enqueue channel becomes full.  To avoid this, the pool provides a semaphore, which is preloaded with resource tickets equal to the pool's enqueue channel.  The semaphore will signal the caller when space is available in the enqueue channel.
 
-A simple example of this deadlock can be found here https://play.golang.org/p/hea1lMu9ya 
+An example of this type of deadlock can be found here https://play.golang.org/p/hea1lMu9ya 
 
 ```go
 	type Visit struct {
