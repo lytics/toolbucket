@@ -117,7 +117,6 @@ the style from the first example but the performance of both are simlar.
 		for {
 			select {
 			case res := <-pool.Results():
-				pool.ReleaseTicket()
 
 				vis := t.Output.(*Visit)
 				fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
