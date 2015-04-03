@@ -40,8 +40,8 @@ JSON unmarshalling is very slow at this scale and could add days to your process
 to unmarshall the data in parallel.  But sometimes you need those unmarshall messages, in the
 original order they arrived in.
 
-Solution use orderedtask.Pool, the Task's index will be the kafka offset and the Task's input
-will be the message bytes.   The Task's result will be the unmarshalled struct.  For your
+The orderedtask.Pool can do this.  The Task's index in this case would be the kafka offset and the Task's input
+would be the message.Body() `[]bytes`.   The Task's result would be the unmarshalled struct.  For your
 processor func(),  write code to do the JSON unmarshalling into a struct.
 
 
@@ -116,7 +116,7 @@ Working examples of both examples can be found in `orderedtaskpool_test.go`.
 		for {
 			select {
 			case res := <-pool.Results():
-
+				//The results will arrive here in the same order they were Enqueued.  
 				vis := t.Output.(*Visit)
 				fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
 				//process the unmarshalled Visit struct
