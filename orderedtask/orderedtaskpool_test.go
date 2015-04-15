@@ -78,7 +78,7 @@ func TestStreamingMsgsThroughThePool(test *testing.T) {
 func TestPoolRPC(test *testing.T) {
 	runtime.GOMAXPROCS(2)
 	const MsgCnt = 9333
-	const PoolSize = 12
+	const PoolSize = 2
 
 	msgchan := make(chan *Task, MsgCnt)
 

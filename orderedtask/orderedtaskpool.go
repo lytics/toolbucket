@@ -25,6 +25,7 @@ type Pool struct {
 	finishedtaskheap *TaskHeap
 	lowwatermark     *LowWatermark
 	semaphore        *TicketDispenser
+	drainer          *time.Ticker
 
 	//Sync Code
 	abort chan bool
@@ -52,7 +53,9 @@ func (ms *Pool) enqueueAndDrain(t *Task) {
 	ms.lock.Lock()
 	defer ms.lock.Unlock()
 
-	ms.finishedtaskheap.Enqueue(t)
+	if t != nil {
+		ms.finishedtaskheap.Enqueue(t)
+	}
 
 	for t, ok := ms.finishedtaskheap.Peek(); ok; t, ok = ms.finishedtaskheap.Peek() {
 		minFinished := t
@@ -66,7 +69,7 @@ func (ms *Pool) enqueueAndDrain(t *Task) {
 				ms.lowwatermark.Dequeue()
 				ms.out <- task
 			} else {
-				time.Sleep(time.Microsecond * 100)
+				return
 			}
 		} else {
 			//someone else is still working on the lowest indexed task, let them
@@ -78,6 +81,7 @@ func (ms *Pool) enqueueAndDrain(t *Task) {
 
 func (ms *Pool) Close() {
 	ms.closeonce.Do(func() {
+		ms.drainer.Stop()
 		close(ms.abort)
 	})
 }
@@ -94,6 +98,7 @@ func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool 
 	abort := make(chan bool)
 	in := make(chan *Task, poolsize+1)
 	out := make(chan *Task, poolsize+1)
+	drainer := time.NewTicker(100 * time.Millisecond)
 
 	ms := &Pool{
 		finishedtaskheap: NewTaskHeap(),
@@ -103,6 +108,7 @@ func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool 
 		out:              out,
 		closeonce:        &sync.Once{},
 		lock:             &sync.Mutex{},
+		drainer:          drainer,
 		//counting semaphore to protect deadlocking when the pool is used in an RPC manner
 		//  i.e. read/write from the same go func.
 		//  See: TestPoolRPC
@@ -115,6 +121,8 @@ func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool 
 			var workerlocal map[string]interface{} = make(map[string]interface{}, 1)
 			for {
 				select {
+				case <-drainer.C:
+					ms.enqueueAndDrain(nil)
 				case t := <-ms.in:
 					processor(workerlocal, t)
 					ms.enqueueAndDrain(t)
