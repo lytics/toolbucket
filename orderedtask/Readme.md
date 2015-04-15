@@ -40,18 +40,17 @@ JSON unmarshalling is very slow at this scale and could add days to your process
 to unmarshall the data in parallel.  But sometimes you need those unmarshall messages, in the
 original order they arrived in.
 
-Solution use orderedtask.Pool, the Task's index will be the kafka offset and the Task's input
-will be the message bytes.   The Task's result will be the unmarshalled struct.  For your
+The orderedtask.Pool can do this.  The Task's index in this case would be the kafka offset and the Task's input
+would be the message.Body() `[]bytes`.   The Task's result would be the unmarshalled struct.  For your
 processor func(),  write code to do the JSON unmarshalling into a struct.
 
 
-###### Code Examples:
+##### Code Examples:
 import line: `import "github.com/lytics/toolbucket/orderedtask"`
 
-For fulling working examples of both styles below, have a look at `orderedtaskpool_test.go`.  I personally prefer 
-the style from the first example, but performance testing of both showed the same results. 
+Working examples of both examples can be found in `orderedtaskpool_test.go`.  
 
-### Producer / Consumer example 
+###### Producer / Consumer example 
 
 ```go
 	type Visit struct {
@@ -117,8 +116,7 @@ the style from the first example, but performance testing of both showed the sam
 		for {
 			select {
 			case res := <-pool.Results():
-				pool.ReleaseTicket()
-
+				//The results will arrive here in the same order they were Enqueued.  
 				vis := t.Output.(*Visit)
 				fmt.Printf("Visit: name:%v click:%v ts:%v \n", vis.Name, vis.ClickLink, vis.VisitTime)
 				//process the unmarshalled Visit struct
@@ -128,12 +126,11 @@ the style from the first example, but performance testing of both showed the sam
 ```
 
 
-### RPC style pool use
-I can't think of a better name for it, but its the case were you have a single go routine read and write from the same pool.  Versus 
-have one go routine enqueue and one consume the results.  This style of processing is a bit tricker because it runs the risk of 
-deadlocking in the select.  To avoid this, the pool provides a resource semaphore, which is preloaded with tickets equal to the pool size. 
+###### RPC style pool use
+I can't think of a better name for it, but its the case where you have a single go routine read and write from the same pool.  Versus 
+having one go routine enqueue and one consume the results.  This style of processing requires more coordination to avoid hitting a deadlocking in the select if the enqueue channel becomes full.  To avoid this, the pool provides a semaphore, which is preloaded with resource tickets equal to the pool's enqueue channel.  The semaphore will signal the caller when space is available in the enqueue channel.
 
-A simple example of this deadlock can be found here https://play.golang.org/p/hea1lMu9ya 
+An example of this type of deadlock can be found here https://play.golang.org/p/hea1lMu9ya 
 
 ```go
 	type Visit struct {
@@ -185,12 +182,10 @@ A simple example of this deadlock can be found here https://play.golang.org/p/he
 		for {
 			select {
 			//When you read and write into the pool from the same go routine, you run the risk of a deadlock 
-			//  by over producing and deadlocking on a channel blocking.  To prevent this pool provides a  
-			//  semaphore for your convenient.  This should be non-blocking unless the producers are after than 
-			//  your consumers. 
-			//
-			//  pool.AquireTicket() blocks if the enqueue channel becomes full
-			//  pool.ReleaseTicket() signals enqueues that a resource has been returned too the pull.
+			//  by over producing and deadlocking on a channel wait.  To prevent this, the pool provides a  
+			//  semaphore for your convenient. 
+			//  pool.AquireTicket() blocks if the enqueue channel is full
+			//  pool.ReleaseTicket() signals enqueue that space in the enqueue channel is available.
 			case <-pool.AquireTicket():
 				event := <-kafkaconsumer.Events():
 				if event.Err != nil {
