@@ -25,7 +25,7 @@ type Pool struct {
 	finishedtaskheap *TaskHeap
 	lowwatermark     *LowWatermark
 	semaphore        *TicketDispenser
-	drainer          *time.Ticker
+	drainer          *time.Timer
 
 	//Sync Code
 	abort chan bool
@@ -48,14 +48,10 @@ func (ms *Pool) Enqueue(m *Task) {
 	ms.in <- m
 }
 
-func (ms *Pool) enqueueAndDrain(t *Task) {
+func (ms *Pool) drain() {
 	//emit tasks if the lowest index is ready.
 	ms.lock.Lock()
 	defer ms.lock.Unlock()
-
-	if t != nil {
-		ms.finishedtaskheap.Enqueue(t)
-	}
 
 	for t, ok := ms.finishedtaskheap.Peek(); ok; t, ok = ms.finishedtaskheap.Peek() {
 		minFinished := t
@@ -73,7 +69,7 @@ func (ms *Pool) enqueueAndDrain(t *Task) {
 			}
 		} else {
 			//someone else is still working on the lowest indexed task, let them
-			//worry about draining the finished-task's minheap (aka priority queue)
+			//finish before draining the pool
 			return
 		}
 	}
@@ -97,8 +93,11 @@ func (ms *Pool) ReleaseTicket() {
 func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool {
 	abort := make(chan bool)
 	in := make(chan *Task, poolsize+1)
-	out := make(chan *Task, poolsize+1)
-	drainer := time.NewTicker(100 * time.Millisecond)
+	out := make(chan *Task, poolsize*2)
+
+	slowtimeout := 10 * time.Millisecond
+	fasttimeout := 100 * time.Microsecond
+	drainer := time.NewTimer(fasttimeout)
 
 	ms := &Pool{
 		finishedtaskheap: NewTaskHeap(),
@@ -115,17 +114,34 @@ func NewPool(poolsize int, processor func(map[string]interface{}, *Task)) *Pool 
 		semaphore: NewTicketDispenser(cap(in) - 1),
 	}
 
+	go func() {
+		for {
+			select {
+			case <-drainer.C:
+				ms.drain()
+				if ms.finishedtaskheap.Len() == 0 {
+					drainer.Reset(slowtimeout)
+				} else {
+					drainer.Reset(fasttimeout)
+				}
+
+			case <-ms.abort:
+				return
+			}
+		}
+	}()
+
 	//start up worker pool
 	for i := 0; i < poolsize; i++ {
 		go func() {
 			var workerlocal map[string]interface{} = make(map[string]interface{}, 1)
 			for {
 				select {
-				case <-drainer.C:
-					ms.enqueueAndDrain(nil)
 				case t := <-ms.in:
 					processor(workerlocal, t)
-					ms.enqueueAndDrain(t)
+					ms.lock.Lock()
+					ms.finishedtaskheap.Enqueue(t)
+					ms.lock.Unlock()
 				case <-ms.abort:
 					return
 				}

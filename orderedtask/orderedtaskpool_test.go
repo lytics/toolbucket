@@ -132,29 +132,17 @@ func TestPoolRPC(test *testing.T) {
 }
 
 func TestSlowConsumers(test *testing.T) {
-
-	const MsgCnt = 333
-	const PoolSize = 2
-
-	msgchan := make(chan *Task, MsgCnt)
+	const MsgCnt = 6336
+	const PoolSize = 4
+	const ConsumerSleeptime = time.Duration(2 * time.Millisecond)
+	test.Logf("TestSlowConsumers: best possible runtime is %v", time.Duration(ConsumerSleeptime*MsgCnt))
 
 	pool := NewPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
 		msg := t.Input.(*Msg)
-		amt := time.Duration(rand.Intn(3))
-		time.Sleep(time.Millisecond * amt)
 		t.Output = msg
 	})
 
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < MsgCnt; i++ {
-			m := &Msg{fmt.Sprintf("{'foo':'%d'}", i), uint64(i)}
-			msgchan <- &Task{Index: m.offset, Input: m}
-		}
-		close(msgchan)
-	}()
 
 	wg.Add(1)
 	go func() {
@@ -163,26 +151,28 @@ func TestSlowConsumers(test *testing.T) {
 		expectedoffset := uint64(0)
 
 		for {
-			select {
-			case <-pool.AquireTicket():
-				t, ok := <-msgchan
-				if ok {
-					pool.Enqueue(t)
-				}
-			case t := <-pool.Results():
-				pool.ReleaseTicket()
+			t := <-pool.Results()
 
-				msg := t.Output.(*Msg)
-				i++
-				if i == MsgCnt-1 {
-					return
-				} else if msg.offset != expectedoffset {
-					test.Fatalf("out of order: got:%d expected:%d", msg.offset, expectedoffset)
-				}
-				expectedoffset++
-				amt := time.Duration(rand.Intn(5))
-				time.Sleep(time.Millisecond * amt)
+			msg := t.Output.(*Msg)
+			i++
+			if i == MsgCnt-1 {
+				return
+			} else if msg.offset != expectedoffset {
+				test.Fatalf("out of order: got:%d expected:%d", msg.offset, expectedoffset)
 			}
+			expectedoffset++
+			time.Sleep(ConsumerSleeptime)
+		}
+
+	}()
+
+	//Produce messages into the pool
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < MsgCnt; i++ {
+			m := &Msg{fmt.Sprintf("{'foo':'%d'}", i), uint64(i)}
+			pool.Enqueue(&Task{Index: m.offset, Input: m})
 		}
 	}()
 
@@ -291,3 +281,59 @@ func TestFastWorkers(test *testing.T) {
 
 	wg.Wait()
 }
+
+func benchme(i int, test *testing.B) {
+
+	MsgCnt := i
+	const PoolSize = 4
+
+	pool := NewPool(PoolSize, func(workerlocal map[string]interface{}, t *Task) {
+		msg := t.Input.(*Msg)
+		t.Output = msg
+	})
+
+	wg := &sync.WaitGroup{}
+
+	//Produce messages into the pool
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < MsgCnt; i++ {
+			m := &Msg{fmt.Sprintf("{'foo':'%d'}", i), uint64(i)}
+			pool.Enqueue(&Task{Index: m.offset, Input: m})
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		i := 0
+		expectedoffset := uint64(0)
+		for t := range pool.Results() {
+			msg := t.Output.(*Msg)
+
+			i++
+			if i == MsgCnt-1 {
+				return
+			} else if msg.offset != expectedoffset {
+				test.Fatalf("the offsets weren't in order: got:%d expected:%d", msg.offset, expectedoffset)
+			}
+			expectedoffset++
+		}
+	}()
+
+	wg.Wait()
+}
+
+func benchmarkOrderedPool(i int, b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		benchme(i, b)
+	}
+}
+
+func BenchmarkOrderedPool1(b *testing.B)  { benchmarkOrderedPool(10, b) }
+func BenchmarkOrderedPool2(b *testing.B)  { benchmarkOrderedPool(20, b) }
+func BenchmarkOrderedPool3(b *testing.B)  { benchmarkOrderedPool(30, b) }
+func BenchmarkOrderedPool10(b *testing.B) { benchmarkOrderedPool(100, b) }
+func BenchmarkOrderedPool20(b *testing.B) { benchmarkOrderedPool(2000, b) }
+func BenchmarkOrderedPool40(b *testing.B) { benchmarkOrderedPool(40000, b) }
