@@ -1,0 +1,170 @@
+package bitset
+
+import (
+	"bytes"
+	"fmt"
+	"testing"
+
+	"github.com/bmizerany/assert"
+)
+
+type Bit64Set struct {
+	BitSet uint64
+}
+
+func (b *Bit64Set) Set(bit uint32) {
+	b.BitSet |= (1 << bit)
+}
+
+func (b *Bit64Set) Clear(bit uint32) {
+	b.BitSet &= ^(1 << bit)
+}
+
+func (b *Bit64Set) Get(bit uint32) bool {
+	if b.BitSet&(1<<bit) == 0 {
+		return false
+	} else {
+		return true
+	}
+}
+
+func (b *Bit64Set) String() string {
+	buf := bytes.Buffer{}
+	for i := 63; i >= 0; i-- {
+		if b.BitSet&(1<<uint32(i)) > 0 {
+			buf.WriteString("1")
+		} else {
+			buf.WriteString("0")
+		}
+	}
+	return buf.String()
+}
+
+/*
+func (b *Bit64Set) GetRange(start, end uint32) *Bit64RangeMask {
+	shift := 64 - r.Size
+	mask := (^uint64(0)) << shift
+	mask = mask >> shift
+	b.BitSet &= ^(mask << (r.StartingBit - r.Size))
+}
+*/
+
+func (b *Bit64Set) SetRange(r *Bit64RangeMask) {
+	//if r.Size()> 64 error?
+	frontshift := (64 - r.Size())
+	mask := (r.Mask << frontshift) >> frontshift //zero out the front bits from the mask
+	mask = (mask << r.End)                       // move mask into its range position.
+	b.BitSet &= (mask & ^(mask))                 //clear the existing bit range for the mask
+	b.BitSet |= mask
+}
+
+func (b *Bit64Set) ClearRange(start, end uint32) {
+	b.SetRange(&Bit64RangeMask{start, end, uint64(0)})
+	/*
+		size := start - end
+		shift := 64 - size
+		mask := (^uint64(0)) << shift
+		mask = mask >> shift
+		b.BitSet &= ^(mask << (start - size))
+	*/
+}
+
+type Bit64RangeMask struct {
+	Start uint32
+	End   uint32
+	Mask  uint64
+}
+
+func (r *Bit64RangeMask) Size() uint32 {
+	return r.Start - r.End
+}
+
+func TestBit(t *testing.T) {
+
+	bmap := &Bit64Set{}
+	bmap.Set(3)
+	assert.T(t, bmap.Get(2) == false)
+	assert.T(t, bmap.Get(3) == true)
+	bmap.Set(5)
+	assert.T(t, bmap.Get(7) == false)
+	bmap.Set(7)
+	assert.T(t, bmap.Get(7) == true)
+	assert.T(t, bmap.Get(7) == true)
+	bmap.Set(7)
+	bmap.Set(7)
+	bmap.Set(7)
+	assert.T(t, bmap.Get(7) == true)
+	assert.T(t, bmap.Get(3) == true)
+	assert.T(t, bmap.Get(5) == true)
+	assert.T(t, bmap.Get(0) == false)
+	bmap.Clear(7)
+	assert.T(t, bmap.Get(7) == false)
+	assert.T(t, bmap.Get(7) == false)
+	bmap.Clear(7)
+	assert.T(t, bmap.Get(7) == false)
+
+	//bounds tests
+	bmap = &Bit64Set{}
+	assert.T(t, bmap.Get(0) == false)
+	bmap.Set(0)
+	assert.T(t, bmap.Get(0) == true)
+	assert.T(t, bmap.BitSet == uint64(1))
+	assert.T(t, bmap.Get(63) == false)
+	bmap.Set(63)
+	assert.T(t, bmap.Get(63) == true)
+	bmap.Clear(63)
+	assert.T(t, bmap.Get(63) == false)
+}
+
+func TestBitLoop(t *testing.T) {
+
+	fmt.Println("---")
+
+	bmap := &Bit64Set{}
+
+	for i := 0; i < 64; i++ {
+		bmap.Set(uint32(i))
+	}
+	assert.T(t, bmap.BitSet == ^uint64(0))
+	for i := 63; i >= 0; i-- {
+		bmap.Clear(uint32(i))
+	}
+	assert.T(t, bmap.BitSet == uint64(0))
+}
+
+func TestBitRange(t *testing.T) {
+
+	fmt.Println("---")
+	b := &Bit64Set{}
+	b.Set(0)
+	b.Set(1)
+	b.Set(2)
+	b.Set(3)
+
+	bmap := &Bit64Set{}
+	for i := 4; i < 65; i += 4 {
+		bmap.SetRange(&Bit64RangeMask{uint32(i), uint32(i - 4), b.BitSet})
+		fmt.Println(bmap)
+		bmap.SetRange(&Bit64RangeMask{uint32(i), uint32(i - 4), b.BitSet})
+		fmt.Println(bmap)
+		bmap.ClearRange(uint32(i), uint32(i-4))
+	}
+	bmap.ClearRange(64, 0)
+	fmt.Println(bmap)
+	bmap.SetRange(&Bit64RangeMask{64, 4, ^uint64(0)})
+	bmap.SetRange(&Bit64RangeMask{64, 4, ^uint64(0)})
+	bmap.SetRange(&Bit64RangeMask{64, 4, ^uint64(0)})
+	fmt.Println(bmap)
+	bmap.ClearRange(64, 0)
+	fmt.Println(bmap)
+	bmap.SetRange(&Bit64RangeMask{60, 4, ^uint64(0)})
+	fmt.Println(bmap)
+	bmap.ClearRange(60, 4)
+	bmap.Set(0)
+	bmap.Set(63)
+	bmap.Set(45)
+	bmap.ClearRange(60, 4)
+	bmap.Set(1)
+	bmap.Set(62)
+	fmt.Println(bmap)
+}
