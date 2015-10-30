@@ -1,10 +1,6 @@
 package ldid
 
-import (
-	"time"
-
-	"github.com/lytics/toolbucket/bitter"
-)
+import "time"
 
 type LDIDMaker struct {
 	Epoch     int64 //time converted to nano units.
@@ -14,24 +10,24 @@ type LDIDMaker struct {
 	windowtime int64
 }
 
-const tu = 1e7 // nsec, i.e. 10 msec
+const tu = int64(10 * time.Millisecond) // 10 msec
 
 func (l *LDIDMaker) Next() *LDID {
-	ctime := time.Now().UTC().UnixNano() / tu //truncate time to 10 msec
+	ctime := now10milli() //truncate time to 10 msec
 	ctime = ctime - l.Epoch
 	if ctime != l.windowtime {
 		l.windowtime = ctime
 		l.Counter = 0
 	}
 
-	cnt := l.Counter
+	//cnt := l.Counter
 
 	l.Counter++
 	if l.Counter == 0 {
-		sleeptime :=
-			time.Sleep()
+		time.Sleep(sleeptime(ctime))
 	}
 
+	return nil
 }
 
 type LDID struct {
@@ -40,16 +36,29 @@ type LDID struct {
 	Counter   uint64
 }
 
-func sleepTime(overtime int64) time.Duration {
-	return time.Duration(overtime)*10*time.Millisecond -
-		time.Duration(time.Now().UTC().UnixNano()%sonyflakeTimeUnit)*time.Nanosecond
-}
-
 func Marshal(ldid *LDID) uint64 {
-	bf := &bitter.Bit64Set{}
-
+	//bf := &bitter.Bit64Set{}
+	return 0
 }
 
 func UnMarshal(f uint64, Epoch time.Time) *LDID {
+	return nil
+}
 
+func sleeptime(ctime int64) time.Duration {
+	stime := ctime * tu
+	stime = stime - (nownano() % int64(tu))
+	return dur(stime)
+}
+
+func dur(t int64) time.Duration {
+	return time.Duration(t)
+}
+
+func now10milli() int64 {
+	return nownano() / tu
+}
+
+func nownano() int64 {
+	return time.Now().UTC().UnixNano()
 }
