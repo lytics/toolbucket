@@ -1,3 +1,7 @@
+# Experimental ( don't use for more than an example )
+
+I wrote this years ago for go 1.3 as an experimental way of unmarshal kafka messages in parallel, but to then beable to process them in order.  It never made it to production, works well as an example of windowing.  If your considering this package feel free to fork it and make it production ready, I'd by happy to take suggestions on cleaning it up.
+
 #### orderedtask.Pool 
 
 The primary use-case for this package would be to insert tasks in order, have them
@@ -17,7 +21,7 @@ lowest inserted task, we'll emit the results from the finished tasks.  If the lo
 index for finished tasks is not equal to the lowest inserted task's index, then we wait for
 the workers who are processing the lowest indexes to finish before draining.
 
-###### diagram 
+##### diagram
 
 ```
 	        |                            |
@@ -45,7 +49,7 @@ would be the message.Body() `[]bytes`.   The Task's result would be the unmarsha
 processor func(),  write code to do the JSON unmarshalling into a struct.
 
 
-##### Code Examples:
+#### Code Examples:
 import line: `import "github.com/lytics/toolbucket/orderedtask"`
 
 Working examples of both examples can be found in `orderedtaskpool_test.go`.  

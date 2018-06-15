@@ -1,9 +1,16 @@
 # toolbucket
 A selection of small Go tool kits for anyone to use.
 
-## tools:
+## tools kits:
+
+### [ctxwaitgroup](./ctxwaitgroup)
+
+This is a waitgroup which supports timing/canceling out via a context.
 
 ### [orderedtask.Pool](./orderedtask)
+
+Note this code is **Experimental and not production ready**
+
 The primary use-case for this package would be to insert tasks in order, have them
 processed in parallel and have the results consumed in the original order.  
 
