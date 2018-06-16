@@ -24,15 +24,15 @@ func NewWaitGroup() *WaitGroup {
 	}
 }
 
-func (wg *WaitGroup) Inc() error {
+func (wg *WaitGroup) Inc() bool {
 	wg.cond.L.Lock()
 	defer wg.cond.L.Unlock()
 
 	if wg.closed == true {
-		return ErrClosed
+		return false
 	}
 	wg.waiters++
-	return nil
+	return true
 }
 
 func (wg *WaitGroup) Dec() error {
