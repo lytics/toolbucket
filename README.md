@@ -11,10 +11,9 @@ This is a waitgroup which supports timing/canceling out via a context.
 
 Note this code is **Experimental and not production ready**
 
-The primary use-case for this package would be to insert tasks in order, have them
-processed in parallel and have the results consumed in the original order.  
+The primary use-case for this package would be to maintain order 
+in a stream of events, but in an intermediate stage have some processing done in parallel.
+For example, while processing from a queue one may want to unmarshal in parallel but then 
+write the records to a database in order. 
 
-If a task is going to take about 10ms to process and you have 10,000 tasks to perform, then the expected runtime
-to perform all the tasks is about `10000 * 10ms == 100 seconds`.  But if you can do them 
-parallel with 12 workers, the expect runtime becomes `(10000 * 10ms) / 12 == 8.3 seconds`.
 
